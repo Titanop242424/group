@@ -46,6 +46,8 @@ user_bans = {}
 pending_feedback = set()
 verified_users = {}  # Dictionary to store verified users
 reset_time = datetime.now().astimezone(timezone(timedelta(hours=5, minutes=30))).replace(hour=0, minute=0, second=0, microsecond=0)
+# Verification expiry duration (e.g., 24 hours)
+VERIFICATION_EXPIRY = timedelta(hours=1)
 
 # Configuration
 COOLDOWN_DURATION = 500  # 1 minute cooldown
@@ -58,6 +60,17 @@ MAX_ATTACK_DURATION = 180  # Maximum attack duration in seconds (e.g., 300 secon
 def is_member(user_id):
     """Since the channel is private, we cannot check membership directly."""
     return True  # Assume the user is a member, or implement a manual verification process
+
+def is_verified(user_id):
+    """Check if the user is verified and the verification is still valid."""
+    if user_id in verified_users:
+        last_verified = verified_users[user_id]
+        if datetime.now() - last_verified < VERIFICATION_EXPIRY:
+            return True
+        else:
+            # Verification expired
+            del verified_users[user_id]
+    return False
 
 
 def sanitize_filename(filename):
@@ -159,13 +172,13 @@ def bgmi_command(message):
     reset_daily_counts()
     user_id = message.from_user.id
 
-    # Check if the user is verified
-    if user_id not in verified_users:
+    # Check if the user is verified and the verification is still valid
+    if not is_verified(user_id):
         bot.reply_to(
             message,
             "🚨 *Access Denied* 🚨\n\n"
-            "To use this bot, you must join our private channel and verify yourself.\n"
-            "Please forward a message from the private channel to verify.",
+            "👀 To use this bot, you must join our private channel and verify yourself. ⚠️\n"
+            "🚀 Please forward a message from the private channel to verify. 🚀",
             parse_mode="Markdown"
         )
         return
@@ -267,9 +280,8 @@ def handle_forwarded_message(message):
 
     if forwarded_chat_id == PRIVATE_CHANNEL_ID:
         # User has forwarded a message from the private channel
+        verified_users[user_id] = datetime.now()  # Update verification timestamp
         bot.send_message(message.chat.id, "✅ Thank you for verifying! You can now use /bgmi.")
-        # Store the user as verified (you can use a dictionary or database)
-        verified_users[user_id] = True
     else:
         bot.send_message(message.chat.id, "❌ Please forward a message from the correct private channel.")
 
