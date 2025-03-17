@@ -178,7 +178,8 @@ def bgmi_command(message):
             message,
             "🚨 *Access Denied* 🚨\n\n"
             "👀 To use this bot, you must join our private channel and verify yourself. ⚠️\n"
-            "🚀 Please forward a message from the private channel to verify. 🚀",
+            "🚀 Please forward a message from the private channel to verify. 🚀"
+            "🔗 Link :- https://t.me/+_nbkEdBwzjk0Y2Q1 ☠️",
             parse_mode="Markdown"
         )
         return
