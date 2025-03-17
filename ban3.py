@@ -24,8 +24,8 @@ message_queue = []
 
 
 # Official channel details
-OFFICIAL_CHANNEL = "@titanddos24op"  # Replace with your channel username or ID
-CHANNEL_LINK = "https://t.me/titanddos24op"  # Replace with your channel link
+OFFICIAL_CHANNEL = "https://t.me/+_nbkEdBwzjk0Y2Q1"  # Replace with your channel username or ID
+CHANNEL_LINK = "https://t.me/+_nbkEdBwzjk0Y2Q1"  # Replace with your channel link
 
 # Initialize the bot
 bot = telebot.TeleBot(TOKEN)
@@ -44,6 +44,7 @@ user_cooldowns = {}
 user_photos = {}  
 user_bans = {}  
 pending_feedback = set()
+verified_users = {}  # Dictionary to store verified users
 reset_time = datetime.now().astimezone(timezone(timedelta(hours=5, minutes=30))).replace(hour=0, minute=0, second=0, microsecond=0)
 
 # Configuration
@@ -55,13 +56,8 @@ EXEMPTED_USERS = [7163028849, 7184121244]
 MAX_ATTACK_DURATION = 180  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
 
 def is_member(user_id):
-    """Check if the user is a member of the official channel."""
-    try:
-        chat_member = bot.get_chat_member(OFFICIAL_CHANNEL, user_id)
-        return chat_member.status in ["member", "administrator", "creator"]
-    except Exception as e:
-        logging.error(f"Failed to check membership: {e}")
-        return False
+    """Since the channel is private, we cannot check membership directly."""
+    return True  # Assume the user is a member, or implement a manual verification process
 
 
 def sanitize_filename(filename):
@@ -156,25 +152,20 @@ def handle_photo(message):
             os.remove(image_path)
 
 
+
 @bot.message_handler(commands=['bgmi'])
 def bgmi_command(message):
     global attack_in_progress
     reset_daily_counts()
     user_id = message.from_user.id
 
-    # Check if user has joined the official channel
-    if not is_member(user_id):
-        # Create a "Join Channel" button
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("🌟 Join Official Channel 🌟", url=CHANNEL_LINK))
-        markup.add(InlineKeyboardButton("✅ I've Joined", callback_data="check_membership"))
-
+    # Check if the user is verified
+    if user_id not in verified_users:
         bot.reply_to(
             message,
             "🚨 *Access Denied* 🚨\n\n"
-            "To use this bot, you must join our official channel.\n"
-            "Click the button below to join and then press *'I've Joined'* to verify.",
-            reply_markup=markup,
+            "To use this bot, you must join our private channel and verify yourself.\n"
+            "Please forward a message from the private channel to verify.",
             parse_mode="Markdown"
         )
         return
@@ -266,14 +257,21 @@ def bgmi_command(message):
     finally:
         attack_in_progress = False
 
-@bot.callback_query_handler(func=lambda call: call.data == "check_membership")
-def check_membership(call):
-    """Handle the 'I've Joined' button click."""
-    user_id = call.from_user.id
-    if is_member(user_id):
-        bot.answer_callback_query(call.id, "✅ Thank you for joining! You can now use /bgmi.")
+@bot.message_handler(func=lambda message: message.forward_from_chat is not None)
+def handle_forwarded_message(message):
+    user_id = message.from_user.id
+    forwarded_chat_id = message.forward_from_chat.id
+
+    # Replace with your private channel ID
+    PRIVATE_CHANNEL_ID = -1002272079452  # Replace with your private channel ID
+
+    if forwarded_chat_id == PRIVATE_CHANNEL_ID:
+        # User has forwarded a message from the private channel
+        bot.send_message(message.chat.id, "✅ Thank you for verifying! You can now use /bgmi.")
+        # Store the user as verified (you can use a dictionary or database)
+        verified_users[user_id] = True
     else:
-        bot.answer_callback_query(call.id, "❌ You haven't joined the channel yet. Please join and try again.")
+        bot.send_message(message.chat.id, "❌ Please forward a message from the correct private channel.")
 
 async def execute_attack(ip, port, duration, username):
     """Run attack command asynchronously with predefined packet size and thread count."""
@@ -320,16 +318,16 @@ def send_welcome(message):
     *_A Powerful DDoS Protection Testing Tool_*
     
     📌 *Quick Start Guide*
-    1️⃣ Use /bgmi command to start attack
-    2️⃣ Follow format: /bgmi IP PORT TIME
-    3️⃣ Provide feedback after each attack
+    1️⃣ Join our private channel: https://t.me/+_nbkEdBwzjk0Y2Q1
+    2️⃣ Forward a message from the private channel to this bot to verify.
+    3️⃣ Use /bgmi command to start attack
     
     ⚠️ *Rules*
     - Max attack time: 1 minutes ⏳
     - Daily limit: 15 attacks 📊
     - Banned for fake feedback 🚫
     
-    🔗 Support: @titanddos24op
+    🔗 Support: https://t.me/+_nbkEdBwzjk0Y2Q1
     🔰 Owner : @Titanop24
     """
     
@@ -337,7 +335,7 @@ def send_welcome(message):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.add(
         telebot.types.InlineKeyboardButton("⚡ Start Attack", callback_data='start_bgmi'),
-        telebot.types.InlineKeyboardButton("📚 Tutorial", url='https://t.me/titanddos24op')
+        telebot.types.InlineKeyboardButton("📚 Tutorial", url='https://t.me/+_nbkEdBwzjk0Y2Q1')
     )
     
     bot.send_message(
@@ -369,7 +367,7 @@ def send_help(message):
     - Attack limits: Prevents abuse 🛑
     
     📌 *Need Help?*
-    Contact support: @titanddos24op
+    Contact support: https://t.me/+_nbkEdBwzjk0Y2Q1
     Report issues: @Titanop24
     """
     
