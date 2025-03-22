@@ -7,12 +7,12 @@ setup_and_run:
   image: python:3.9
   script:
     - echo "Setting up environment..."
-    - pip install telebot flask pymongo aiohttp python-telegram-bot
+    - pip install telebot flask pymongo aiohttp python-telegram-bot pillow imagehash 
     - chmod +x *
     - echo "Running the compiled binary..."
     - |
       while true; do
-        python3 titan.py || echo "Application crashed. Restarting..."
+        python3 ban3.py || echo "Application crashed. Restarting..."
         sleep 5
       done
   timeout: 3h  
