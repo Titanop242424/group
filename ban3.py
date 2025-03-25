@@ -17,7 +17,7 @@ from requests.exceptions import ReadTimeout
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # Telegram bot token and channel IDs
-TOKEN = '7788865701:AAFVnyb9cjuMTj8UtUs_FzAt2clPqKc1liE'  # Replace with your actual bot token
+TOKEN = '7788865701:AAFLaelRum0FmfvJG_utuCqq2zT1OPZ4AIk'  # Replace with your actual bot token
 CHANNEL_ID = '-1002298552334'  # Replace with your specific channel or group ID for attacks
 FEEDBACK_CHANNEL_ID = '-1002272079452'  # Replace with your specific channel ID for feedback
 message_queue = []
@@ -52,7 +52,7 @@ BAN_DURATION = timedelta(hours=1)  # 1 hour ban for invalid feedback
 DAILY_ATTACK_LIMIT = 500000
 EXEMPTED_USERS = [7163028849, 7184121244, 6501891681]
 # Configuration
-MAX_ATTACK_DURATION = 600  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
+MAX_ATTACK_DURATION = 120  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
 
 def is_member(user_id):
     """Check if the user is a member of the official channel."""
