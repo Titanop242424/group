@@ -42,7 +42,7 @@ user_cooldowns = {}  # Stores cooldown end times for users
 # Configuration
 COOLDOWN_DURATION = 60  # 1 minute cooldown
 EXEMPTED_USERS = [7163028849, 7184121244]
-MAX_ATTACK_DURATION = 60  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
+MAX_ATTACK_DURATION = 180  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
 ATTACK_COST = 5  # Coins deducted per attack
 
 # File paths
