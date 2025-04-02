@@ -17,7 +17,7 @@ from requests.exceptions import ReadTimeout
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # Telegram bot token and channel IDs
-TOKEN = '7788865701:AAFLaelRum0FmfvJG_utuCqq2zT1OPZ4AIk'  # Replace with your actual bot token
+TOKEN = '7788865701:AAEW3E0_GZWjcwc4oyLKgFSuiV0d849mvXM'  # Replace with your actual bot token
 CHANNEL_ID = '-1002298552334'  # Replace with your specific channel or group ID for attacks
 FEEDBACK_CHANNEL_ID = '-1002124760113'  # Replace with your specific channel ID for feedback
 message_queue = []
@@ -42,7 +42,7 @@ user_cooldowns = {}  # Stores cooldown end times for users
 # Configuration
 COOLDOWN_DURATION = 60  # 1 minute cooldown
 EXEMPTED_USERS = [7163028849, 7184121244]
-MAX_ATTACK_DURATION = 180  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
+MAX_ATTACK_DURATION = 120  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
 ATTACK_COST = 5  # Coins deducted per attack
 
 # File paths
