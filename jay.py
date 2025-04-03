@@ -569,7 +569,7 @@ def list_users(message):
 
 @bot.message_handler(commands=['logs'])
 def show_logs(message):
-    """Show logs"""
+    """Show logs with proper formatting"""
     if message.from_user.id not in ADMIN_IDS:
         bot.reply_to(message, "❌ Only admins can use this command!")
         return
@@ -579,32 +579,34 @@ def show_logs(message):
             bot.reply_to(message, "📭 No logs found!")
             return
         
-        with open(LOGS_FILE, 'r') as f:
+        with open(LOGS_FILE, 'r', encoding='utf-8') as f:
             logs = f.readlines()
         
         if not logs:
             bot.reply_to(message, "📭 No logs found!")
             return
         
-        # Show last 50 logs
-        logs = logs[-50:]
+        # Prepare clean log entries
+        clean_logs = []
+        for log in logs[-50:]:  # Show last 50 entries
+            # Remove any Markdown special characters
+            clean_log = re.sub(r'([_*\[\]()~`>#+-=|{}.!])', r'\\\1', log.strip())
+            clean_logs.append(clean_log)
+        
+        # Format as code block to avoid Markdown parsing issues
         response = "📜 *Recent Logs*\n\n"
-        response += "🕒 Time | 👤 User | 🔧 Action | 📝 Details\n"
-        response += "--------------------------------\n"
+        response += "```\n"
+        response += "\n".join(clean_logs)
+        response += "\n```"
         
-        for log in logs:
-            parts = log.strip().split(' | ')
-            if len(parts) >= 4:
-                response += f"{parts[0]} | {parts[1]} | {parts[2]} | {parts[3]}\n"
-        
-        bot.reply_to(message, response, parse_mode='Markdown')
+        # Send with parse_mode=None to avoid Markdown processing
+        bot.reply_to(message, response, parse_mode=None)
         
     except Exception as e:
-        bot.reply_to(
-            message,
-            f"❌ Error: {str(e)}",
-            parse_mode='Markdown'
-        )
+        error_msg = "❌ Error displaying logs\n\n"
+        error_msg += f"Error: {str(e)}"
+        bot.reply_to(message, error_msg, parse_mode=None)
+        logging.error(f"Logs command error: {e}")
 
 @bot.message_handler(commands=['clear_logs'])
 def clear_logs(message):
