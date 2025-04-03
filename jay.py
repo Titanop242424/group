@@ -47,7 +47,10 @@ for file in [USERS_FILE, LOGS_FILE]:
         open(file, 'w').close()
 
 def log_action(action, user_id=None, details=""):
-    """Log actions to logs file"""
+    """Log actions to logs file - only attack-related actions"""
+    if not action.startswith("ATTACK_"):
+        return  # Only log attack-related actions
+    
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     user_info = f"User {user_id}" if user_id else "System"
     log_entry = f"{timestamp} | {user_info} | {action} | {details}\n"
@@ -318,7 +321,7 @@ def bgmi_command(message):
         💰 Coins Used: {ATTACK_COST}
         ⏱️ Cooldown: {COOLDOWN_DURATION}s
         
-        🛡️ Attack will complete automatically!
+        ⚠️ Attack will complete automatically!
         """
         
         bot.reply_to(
@@ -386,14 +389,10 @@ async def execute_attack(ip, port, duration, user_id):
         success_msg = f"""
         🚀 *Attack Successfully Completed!*
         
-        ▫️ *Target:* `{ip}:{port}`
-        ▫️ *Duration:* {duration} seconds
-        ▫️ *Attacker:* `{user_id}`
-        ▫️ *Method:* Spike (1024 packets, 10 threads)
-        
-        ```
-        {stdout.decode().strip() if stdout else 'No output from binary'}
-        ```
+        🎯 *Target:* `{ip}:{port}`
+        ⏳ *Duration:* {duration} seconds
+        👤 *Attacker:* `{user_id}`
+        🛠️ *Method:* PUBG/BGMI - UDP
         """
         
         bot.send_message(
@@ -572,26 +571,26 @@ def list_users(message):
 
 @bot.message_handler(commands=['logs'])
 def show_logs(message):
-    """Show logs"""
+    """Show attack logs only"""
     if message.from_user.id not in ADMIN_IDS:
         bot.reply_to(message, "❌ Only admins can use this command!")
         return
     
     try:
         if not os.path.exists(LOGS_FILE) or os.path.getsize(LOGS_FILE) == 0:
-            bot.reply_to(message, "📭 No logs found!")
+            bot.reply_to(message, "📭 No attack logs found!")
             return
         
         with open(LOGS_FILE, 'r') as f:
             logs = f.readlines()
         
         if not logs:
-            bot.reply_to(message, "📭 No logs found!")
+            bot.reply_to(message, "📭 No attack logs found!")
             return
         
-        # Show last 50 logs
+        # Show last 50 logs (all will be attack logs due to our filter)
         logs = logs[-50:]
-        response = "📜 *Recent Logs*\n\n"
+        response = "📜 *Recent Attack Logs*\n\n"
         response += "🕒 Time | 👤 User | 🔧 Action | 📝 Details\n"
         response += "--------------------------------\n"
         
