@@ -633,6 +633,42 @@ def show_logs(message):
             parse_mode='Markdown'
         )
 
+@bot.message_handler(commands=['clear_logs'])
+def clear_logs(message):
+    """Clear attack logs"""
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ Only admins can use this command!")
+        return
+    
+    try:
+        if not os.path.exists(LOGS_FILE) or os.path.getsize(LOGS_FILE) == 0:
+            bot.reply_to(message, "📭 No attack logs to clear!")
+            return
+        
+        # Count only attack logs (successful ones)
+        with open(LOGS_FILE, 'r') as f:
+            log_count = sum(1 for line in f if "ATTACK_SUCCESS" in line)
+        
+        open(LOGS_FILE, 'w').close()
+        
+        bot.reply_to(
+            message,
+            f"🧹 *Attack Logs Cleared!*\n\nDeleted {log_count} attack records.",
+            parse_mode='Markdown'
+        )
+        
+        # Log this action (though it won't appear in logs due to our filter)
+        timestamp = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M:%S")
+        with open(LOGS_FILE, 'a') as f:
+            f.write(f"{timestamp} | System | ADMIN_ACTION | Cleared {log_count} attack logs\n")
+        
+    except Exception as e:
+        bot.reply_to(
+            message,
+            f"❌ Error: {str(e)}",
+            parse_mode='Markdown'
+        )
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     """Handle button callbacks"""
