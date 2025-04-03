@@ -36,8 +36,8 @@ bot.session = session
 
 # Global variables
 attack_in_progress = False
-COOLDOWN_DURATION = 60
-MAX_ATTACK_DURATION = 60
+COOLDOWN_DURATION = 120
+MAX_ATTACK_DURATION = 120
 ATTACK_COST = 5
 user_cooldowns = {}
 
@@ -277,7 +277,7 @@ def bgmi_command(message):
     try:
         args = message.text.split()[1:]
         if len(args) != 3:
-            raise ValueError("Invalid format. Use: /bgmi IP PORT TIME")
+            raise ValueError("⚠️ Usage: /bgmi IP PORT TIME")
         
         ip, port, duration = args
         
