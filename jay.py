@@ -47,13 +47,18 @@ for file in [USERS_FILE, LOGS_FILE]:
         open(file, 'w').close()
 
 def log_action(action, user_id=None, details=""):
-    """Log actions to logs file - only attack-related actions"""
-    if not action.startswith("ATTACK_"):
-        return  # Only log attack-related actions
+    """Log actions to logs file - only attack success"""
+    if action != "ATTACK_SUCCESS":  # Only log successful attacks
+        return
     
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    user_info = f"User {user_id}" if user_id else "System"
-    log_entry = f"{timestamp} | {user_info} | {action} | {details}\n"
+    # Set Kolkata timezone (IST)
+    kolkata = timezone(timedelta(hours=5, minutes=30))
+    timestamp = datetime.now(kolkata).strftime("%Y-%m-%d %H:%M:%S")
+    
+    user_info = get_user_info(user_id)
+    username = user_info['username'] if user_info['username'] != "None" else f"User {user_id}"
+    
+    log_entry = f"{timestamp} | {username} | {action} | {details}\n"
     
     with open(LOGS_FILE, 'a') as f:
         f.write(log_entry)
@@ -571,7 +576,7 @@ def list_users(message):
 
 @bot.message_handler(commands=['logs'])
 def show_logs(message):
-    """Show attack logs only"""
+    """Show attack logs with attractive UI"""
     if message.from_user.id not in ADMIN_IDS:
         bot.reply_to(message, "❌ Only admins can use this command!")
         return
@@ -588,51 +593,39 @@ def show_logs(message):
             bot.reply_to(message, "📭 No attack logs found!")
             return
         
-        # Show last 50 logs (all will be attack logs due to our filter)
-        logs = logs[-50:]
-        response = "📜 *Recent Attack Logs*\n\n"
-        response += "🕒 Time | 👤 User | 🔧 Action | 📝 Details\n"
-        response += "--------------------------------\n"
+        # Prepare attractive header
+        response = "✨ *Attack History Logs* ✨\n\n"
+        response += "🕒 *Time* (Kolkata) | 👤 *Attacker* | 🎯 *Target* | ⏱ *Duration*\n"
+        response += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         
-        for log in logs:
+        # Process logs in reverse order (newest first)
+        for log in reversed(logs[-50:]):  # Show last 50 logs, newest first
             parts = log.strip().split(' | ')
-            if len(parts) >= 4:
-                response += f"{parts[0]} | {parts[1]} | {parts[2]} | {parts[3]}\n"
+            if len(parts) >= 4 and parts[2] == "ATTACK_SUCCESS":
+                time = parts[0]
+                username = parts[1]
+                target_duration = parts[3].split(' for ')
+                target = target_duration[0] if len(target_duration) > 0 else "Unknown"
+                duration = target_duration[1] if len(target_duration) > 1 else "?"
+                
+                response += (
+                    f"🕰 `{time}` | "
+                    f"👤 {username} | "
+                    f"🎯 `{target}` | "
+                    f"⏱ {duration}\n"
+                )
         
-        bot.reply_to(message, response, parse_mode='Markdown')
+        # Add footer
+        response += "\n🔹 *Total Attacks Shown:* " + str(len([l for l in logs if "ATTACK_SUCCESS" in l]))
         
-    except Exception as e:
-        bot.reply_to(
-            message,
-            f"❌ Error: {str(e)}",
-            parse_mode='Markdown'
-        )
-
-@bot.message_handler(commands=['clear_logs'])
-def clear_logs(message):
-    """Clear logs"""
-    if message.from_user.id not in ADMIN_IDS:
-        bot.reply_to(message, "❌ Only admins can use this command!")
-        return
-    
-    try:
-        if not os.path.exists(LOGS_FILE) or os.path.getsize(LOGS_FILE) == 0:
-            bot.reply_to(message, "📭 No logs to clear!")
-            return
-        
-        with open(LOGS_FILE, 'r') as f:
-            log_count = len(f.readlines())
-        
-        open(LOGS_FILE, 'w').close()
-        
-        bot.reply_to(
-            message,
-            f"🧹 *Logs Cleared!*\n\nDeleted {log_count} log entries.",
-            parse_mode='Markdown'
-        )
-        
-        log_action("CLEAR_LOGS", message.from_user.id, f"Cleared {log_count} logs")
-        
+        # Send message (split if too long)
+        if len(response) > 4000:
+            parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
+            for part in parts:
+                bot.reply_to(message, part, parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response, parse_mode='Markdown')
+            
     except Exception as e:
         bot.reply_to(
             message,
