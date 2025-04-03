@@ -18,7 +18,7 @@ logging.basicConfig(
 )
 
 # Configuration
-TOKEN = '7828525928:AAGZIUO4QnLsD_ITKGSkfN5NlGP3UZvU1OM'
+TOKEN = '7788865701:AAEW3E0_GZWjcwc4oyLKgFSuiV0d849mvXM'
 CHANNEL_ID = '-1002298552334'
 OFFICIAL_CHANNEL = "@titanfreeop"
 CHANNEL_LINK = "https://t.me/titanfreeop"
