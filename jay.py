@@ -386,14 +386,11 @@ async def execute_attack(ip, port, duration, user_id):
         success_msg = f"""
         🚀 *Attack Successfully Completed!*
         
-        ▫️ *Target:* `{ip}:{port}`
-        ▫️ *Duration:* {duration} seconds
-        ▫️ *Attacker:* `{user_id}`
-        ▫️ *Method:* Spike (1024 packets, 10 threads)
+        🎯 *Target:* `{ip}:{port}`
+        ⏳ *Duration:* {duration} seconds
+        👤 *Attacker:* `{user_id}`
+        🛠️ *Method:* PUBG/BGMI - UDP 
         
-        ```
-        {stdout.decode().strip() if stdout else 'No output from binary'}
-        ```
         """
         
         bot.send_message(
@@ -407,9 +404,9 @@ async def execute_attack(ip, port, duration, user_id):
         error_msg = f"""
         ❌ *Attack Failed!*
         
-        ▫️ *Target:* `{ip}:{port}`
-        ▫️ *Duration:* {duration}s
-        ▫️ *Error:* `{str(e)}`
+        🎯 *Target:* `{ip}:{port}`
+        ⏳ *Duration:* {duration}s
+        💦 *Error:* `{str(e)}`
         
         Please try again or contact support.
         """
@@ -464,7 +461,7 @@ def add_coin_command(message):
 
 @bot.message_handler(commands=['users'])
 def list_users(message):
-    """List all users"""
+    """List all users with perfect column formatting"""
     if message.from_user.id not in ADMIN_IDS:
         bot.reply_to(message, "❌ Only admins can use this command!")
         return
@@ -477,51 +474,82 @@ def list_users(message):
         with open(USERS_FILE, 'r') as f:
             users_data = f.readlines()
         
-        total_coins = 0
+        # Prepare data
+        users = []
+        total_coins_added = 0
+        total_coins_available = 0
         total_attacks = 0
-        users_list = []
         
         for line in users_data:
             try:
-                uid, balance, attacks = line.strip().split('|')
+                uid, coins, attacks = line.strip().split('|')
                 user_info = get_user_info(int(uid))
                 
-                users_list.append({
+                # Calculate total coins added (available + spent)
+                coins_added = int(coins) + (int(attacks) * ATTACK_COST)
+                
+                users.append({
                     'id': int(uid),
+                    'name': user_info['first_name'] + (' ' + user_info['last_name'] if user_info['last_name'] != "None" else ""),
                     'username': user_info['username'],
-                    'first_name': user_info['first_name'],
-                    'last_name': user_info['last_name'],
-                    'balance': int(balance),
-                    'attacks': int(attacks)
+                    'coins': int(coins),
+                    'attacks': int(attacks),
+                    'coins_added': coins_added
                 })
                 
-                total_coins += int(balance)
+                total_coins_added += coins_added
+                total_coins_available += int(coins)
                 total_attacks += int(attacks)
-            except:
+            except Exception as e:
+                logging.error(f"Error parsing user line: {line.strip()} - {e}")
                 continue
         
-        if not users_list:
+        if not users:
             bot.reply_to(message, "📭 No valid user data found!")
             return
         
-        # Sort by balance (descending)
-        users_list.sort(key=lambda x: x['balance'], reverse=True)
+        # Sort by coins added (descending)
+        users.sort(key=lambda x: x['coins_added'], reverse=True)
         
-        # Prepare message
-        response = "📊 *All Users*\n\n"
-        response += "🆔 ID | 👤 Name | 💰 Coins | ⚔️ Attacks\n"
-        response += "--------------------------------\n"
+        # Prepare header
+        header = "🆔 ID        | 👤 Name            | 💰 Added | 💎 Available | ⚔️ Attacks\n"
+        separator = "───────────┼───────────────────┼──────────┼──────────────┼──────────\n"
         
-        for user in users_list[:50]:  # Show first 50 users
-            name = user['first_name']
-            if user['last_name'] != "None":
-                name += f" {user['last_name']}"
+        # Format each user line
+        user_lines = []
+        for user in users:
+            # Format name with username if available
+            display_name = user['name']
+            if user['username'] != "None":
+                display_name += f" ({user['username']})"
             
-            response += (
-                f"{user['id']} | {name} | {user['balance']} | {user['attacks']}\n"
+            # Add crown emoji for admin
+            if user['id'] in ADMIN_IDS:
+                display_name += " 👑"
+            
+            # Format the line with fixed-width columns
+            line = (
+                f"{user['id']:<11}| "
+                f"{display_name[:17]:<17}| "
+                f"{user['coins_added']:<8}| "
+                f"{user['coins']:<12}| "
+                f"{user['attacks']}"
             )
+            user_lines.append(line)
         
-        response += f"\n📈 *Totals:* {len(users_list)} users | {total_coins} coins | {total_attacks} attacks"
+        # Build final message
+        response = "📊 *User Statistics Report*\n\n"
+        response += header
+        response += separator
+        response += "\n".join(user_lines[:50])  # Show first 50 users
+        
+        # Add summary
+        response += f"\n\n📈 *Totals:*\n"
+        response += f"• 👥 Users: {len(users)}\n"
+        response += f"• 💰 Total coins added: {total_coins_added}\n"
+        response += f"• 💎 Total coins available: {total_coins_available}\n"
+        response += f"• ⚔️ Total attacks: {total_attacks}\n"
+        response += f"• 💸 Total coins spent: {total_attacks * ATTACK_COST}"
         
         # Send message (split if too long)
         if len(response) > 4000:
@@ -534,7 +562,7 @@ def list_users(message):
     except Exception as e:
         bot.reply_to(
             message,
-            f"❌ Error: {str(e)}",
+            f"❌ Error generating user report: {str(e)}",
             parse_mode='Markdown'
         )
         logging.error(f"Users command error: {e}")
